@@ -2,40 +2,42 @@ import streamlit as st
 import pandas as pd
 import joblib
 
-# Set page config
-st.set_page_config(page_title="Deteksi Penipuan Transaksi 💳", page_icon="🛡️", layout="wide")
-
 # Load model
 model = joblib.load("rf_model.joblib")
 
-# Judul halaman utama
+# Konfigurasi halaman
+st.set_page_config(page_title="Deteksi Penipuan Transaksi 💳", page_icon="🛡️", layout="wide")
+
 st.title("🛡️ Deteksi Penipuan Transaksi Online")
 st.markdown("""
-Aplikasi ini menggunakan model **Machine Learning (Random Forest)** untuk memprediksi apakah suatu transaksi online bersifat **penipuan** atau **aman** berdasarkan data numerik yang ditransformasi sebelumnya (PCA features V1-V28 + Amount).
+Aplikasi ini memprediksi apakah suatu transaksi online bersifat **penipuan** atau **normal** menggunakan model Machine Learning `Random Forest`.
 
-**Silakan pilih metode input:**
+Silakan pilih metode input data:
 """)
 
-# Pilihan tab
+# Tab
 tab1, tab2, tab3 = st.tabs(["📊 Input Manual", "📁 Upload CSV", "ℹ️ Penjelasan Fitur"])
 
-# ================================
-# 📊 TAB 1 - Input Manual
-# ================================
+# ===============================
+# 📊 TAB 1: Input Manual
+# ===============================
 with tab1:
     st.subheader("📊 Input Data Transaksi Manual")
-    st.info("Masukkan nilai untuk fitur V1 hingga V28 dan jumlah transaksi (Amount)")
+    st.info("Masukkan nilai untuk V1 hingga V28 dan Amount")
 
-    # Input fitur
     input_data = {}
     cols = st.columns(3)
     for i in range(1, 29):
         col = cols[(i - 1) % 3]
-        input_data[f'V{i}'] = col.number_input(f'V{i}', value=0.0, step=0.1)
+        input_data[f"V{i}"] = col.number_input(f"V{i}", value=0.0, step=0.1)
 
-    amount = st.number_input("Amount 💰", value=0.0, step=1.0)
-    input_data["Amount"] = amount
+    input_data["Amount"] = st.number_input("Amount 💰", value=0.0, step=1.0)
+
     input_df = pd.DataFrame([input_data])
+
+    # Urutkan kolom agar cocok dengan model
+    expected_cols = [f'V{i}' for i in range(1, 29)] + ['Amount']
+    input_df = input_df[expected_cols]
 
     if st.button("🔍 Prediksi Transaksi"):
         prediction = model.predict(input_df)
@@ -47,52 +49,56 @@ with tab1:
         else:
             st.success(f"✅ Transaksi ini **AMAN** dengan probabilitas: **{1 - proba:.2f}**")
 
-# ================================
-# 📁 TAB 2 - Upload CSV
-# ================================
+# ===============================
+# 📁 TAB 2: Upload CSV
+# ===============================
 with tab2:
     st.subheader("📁 Upload File CSV")
-    st.info("Upload file CSV berisi satu atau lebih baris data transaksi (harus punya kolom: V1-V28 + Amount)")
+    st.info("Unggah file CSV berisi kolom: V1–V28 + Amount")
 
     uploaded_file = st.file_uploader("Pilih file CSV", type=["csv"])
+
     if uploaded_file is not None:
-        data = pd.read_csv(uploaded_file)
-        st.write("🧾 Data yang diupload:")
-        st.dataframe(data)
+        df = pd.read_csv(uploaded_file)
 
-        if st.button("🔍 Prediksi dari CSV"):
-            prediction = model.predict(data)
-            probabilities = model.predict_proba(data)[:, 1]
+        try:
+            expected_cols = [f'V{i}' for i in range(1, 29)] + ['Amount']
+            df = df[expected_cols]  # pastikan urutan kolom sesuai
 
-            results = data.copy()
-            results['Prediction'] = prediction
-            results['Fraud Probability'] = probabilities
+            st.write("📄 Data transaksi yang diupload:")
+            st.dataframe(df)
 
-            st.success("✅ Prediksi selesai. Hasil ditampilkan di bawah.")
-            st.dataframe(results)
+            if st.button("🔍 Prediksi dari CSV"):
+                preds = model.predict(df)
+                probas = model.predict_proba(df)[:, 1]
 
-            # Download hasil
-            csv_download = results.to_csv(index=False).encode('utf-8')
-            st.download_button("⬇️ Download Hasil Prediksi CSV", data=csv_download, file_name='hasil_prediksi.csv', mime='text/csv')
+                df["Prediction"] = preds
+                df["Fraud Probability"] = probas
 
-# ================================
-# ℹ️ TAB 3 - Penjelasan Fitur
-# ================================
+                st.success("✅ Prediksi selesai. Hasil ditampilkan di bawah.")
+                st.dataframe(df)
+
+                csv = df.to_csv(index=False).encode("utf-8")
+                st.download_button("⬇️ Download Hasil Prediksi", data=csv, file_name="hasil_prediksi.csv", mime="text/csv")
+
+        except Exception as e:
+            st.error("❌ Format kolom tidak sesuai. Pastikan kolom: V1–V28 dan Amount.")
+
+# ===============================
+# ℹ️ TAB 3: Penjelasan Fitur
+# ===============================
 with tab3:
-    st.subheader("ℹ️ Penjelasan Fitur V1–V28 dan Amount")
+    st.subheader("ℹ️ Penjelasan Fitur Dataset")
     st.markdown("""
-Dataset ini merupakan hasil transformasi PCA (Principal Component Analysis) dari fitur asli transaksi ke fitur-fitur baru yang lebih aman dan bebas identitas. Berikut penjelasannya:
+**Penjelasan singkat fitur:**
 
-- **V1 - V28**: Fitur hasil transformasi PCA yang merepresentasikan pola perilaku transaksi, seperti:
-  - Pola waktu pengguna
-  - Lokasi kartu
-  - Jumlah transaksi per waktu
-  - Korelasi akun atau merchant
-  - Tidak bisa diinterpretasikan langsung (fitur anonim)
-  
-- **Amount**: Nilai nominal transaksi (dalam Euro atau mata uang asli)
+- `V1` sampai `V28`: Fitur hasil transformasi PCA (Principal Component Analysis) dari data asli transaksi. Ini digunakan untuk menyembunyikan data sensitif (nama, lokasi, waktu, dll).
+- `Amount`: Jumlah nilai transaksi dalam satuan mata uang asli (misal: Euro).
+- Tidak ada fitur waktu/identitas karena privasi data.
 
-Model dilatih dengan fitur ini dan label:
-- `Class = 0` (transaksi normal)
-- `Class = 1` (transaksi penipuan)
+**Label asli (saat training model):**
+
+- `Class = 0` → Transaksi Normal  
+- `Class = 1` → Transaksi Penipuan
+
 """)
